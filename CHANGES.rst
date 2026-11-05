@@ -30,6 +30,8 @@ Unreleased
     of only lower case file extensions. :pr:`6012`
 -   Fix parsing IPv6 with port in ``run`` and the test client. :pr:`6096`
 -   Add ``app.query`` route decorator for the HTTP QUERY method.
+-   If an ``appcontext_pushed`` signal receiver raises an error, the
+    application context is not left active. :issue:`6182`
 
 
 Version 3.1.3

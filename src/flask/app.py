@@ -1652,12 +1652,21 @@ class Flask(App):
         """
         ctx = self.request_context(environ)
         error: BaseException | None = None
+        pushed = False
         try:
             try:
                 ctx.push()
+                pushed = True
                 response = self.full_dispatch_request(ctx)
             except Exception as e:
                 error = e
+
+                if not pushed:
+                    # The context was rolled back by push. Re-push it so that
+                    # error handling can use the request data and context.
+                    ctx._push_for_error_handling()
+                    pushed = True
+
                 response = self.handle_exception(ctx, e)
             except:
                 error = sys.exc_info()[1]
@@ -1674,7 +1683,8 @@ class Flask(App):
             ):
                 error = None
 
-            ctx.pop(error)
+            if pushed:
+                ctx.pop(error)
 
     def __call__(
         self, environ: WSGIEnvironment, start_response: StartResponse

@@ -41,6 +41,38 @@ def test_app_context_provides_current_app(app):
     assert not flask.current_app
 
 
+def test_appcontext_pushed_signal_error_does_not_leak_context(app):
+    def fail(sender, **kwargs):
+        raise RuntimeError("signal failed")
+
+    ctx = app.app_context()
+
+    with flask.appcontext_pushed.connected_to(fail, app):
+        with pytest.raises(RuntimeError, match="signal failed"):
+            ctx.push()
+
+    assert not flask.has_app_context()
+
+    # The same context can be pushed again after the failed push.
+    with ctx:
+        assert flask.has_app_context()
+
+    assert not flask.has_app_context()
+
+
+def test_appcontext_pushed_signal_error_in_request(app, client):
+    app.testing = False
+
+    def fail(sender, **kwargs):
+        raise RuntimeError("signal failed")
+
+    with flask.appcontext_pushed.connected_to(fail, app):
+        rv = client.get("/")
+
+    assert rv.status_code == 500
+    assert not flask.has_app_context()
+
+
 def test_app_tearing_down(app):
     cleanup_stuff = []
 

@@ -424,6 +424,10 @@ class AppContext:
         In some situations, such as streaming or testing, the context may be
         pushed multiple times. It will only trigger matching and signals if it
         is not currently pushed.
+
+        .. versionchanged:: 3.2
+            If an error is raised while pushing, the context is reset so that
+            it is not left active.
         """
         self._push_count += 1
 
@@ -431,17 +435,33 @@ class AppContext:
             return
 
         self._cv_token = _cv_app.set(self)
-        appcontext_pushed.send(self.app, _async_wrapper=self.app.ensure_sync)
 
-        if self._request is not None:
-            # Open the session at the moment that the request context is available.
-            # This allows a custom open_session method to use the request context.
-            self._get_session()
+        try:
+            appcontext_pushed.send(self.app, _async_wrapper=self.app.ensure_sync)
 
-            # Match the request URL after loading the session, so that the
-            # session is available in custom URL converters.
-            if self.url_adapter is not None:
-                self.match_request()
+            if self._request is not None:
+                # Open the session at the moment that the request context is available.
+                # This allows a custom open_session method to use the request context.
+                self._get_session()
+
+                # Match the request URL after loading the session, so that the
+                # session is available in custom URL converters.
+                if self.url_adapter is not None:
+                    self.match_request()
+        except BaseException:
+            # The context was partially pushed, it must not remain active.
+            _cv_app.reset(self._cv_token)
+            self._cv_token = None
+            self._push_count -= 1
+            raise
+
+    def _push_for_error_handling(self) -> None:
+        """Push this context again after a failed push without running signals
+        or loading the session, so that :meth:`.Flask.wsgi_app` can handle the
+        error. Used internally.
+        """
+        self._push_count += 1
+        self._cv_token = _cv_app.set(self)
 
     def pop(self, exc: BaseException | None = None) -> None:
         """Pop this context so that it is no longer the active context. Then
